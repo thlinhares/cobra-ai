@@ -7,6 +7,7 @@ import requests
 import soundfile as sf
 import speech_recognition as sr
 from flask import Flask, jsonify, request
+import json
 
 app = Flask(__name__)
 
@@ -26,7 +27,7 @@ message_log_dict = {}
 
 # language for speech to text recoginition
 # TODO: detect this automatically based on the user's language
-LANGUGAGE = "en-US"
+LANGUGAGE = "pt-BR"
 
 
 # get the media url from the media id
@@ -79,7 +80,7 @@ def handle_audio_message(audio_id):
         "Please summarize the following message in its original language "
         f"as a list of bullet-points: {audio_text}"
     )
-    return message
+    return audio_text #message
 
 
 # send the response as a WhatsApp message back to the user
@@ -107,7 +108,12 @@ def send_whatsapp_message(body, message):
 def update_message_log(message, phone_number, role):
     initial_log = {
         "role": "system",
-        "content": "You are a helpful assistant named WhatsBot.",
+        "content": ("Você é um assistente virtual chamado CobraAI."
+                    "Suas principais habilidades é ajudar as pessoas a realizar tarefas referente a cobranças e pagamentos de debitos atrasados."
+                    "Abaixo esta descrito as funções que posso fazer no momento:"
+                    "- Somar e divir a conta entre os amigos;"
+                    "- Cobrar debitos atrasados;"
+                   )
     }
     if phone_number not in message_log_dict:
         message_log_dict[phone_number] = [initial_log]
@@ -125,12 +131,25 @@ def remove_last_message_from_log(phone_number):
 def make_openai_request(message, from_number):
     try:
         message_log = update_message_log(message, from_number, "user")
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=message_log,
-            temperature=0.7,
-        )
-        response_message = response.choices[0].message.content
+        
+        url = "https://api.awanllm.com/v1/chat/completions"
+        payload = json.dumps({
+          "model": "Meta-Llama-3-8B-Instruct",
+          "messages": message_log,
+          "repetition_penalty": 1.1,
+          "temperature": 0.7,
+          "top_p": 0.9,
+          "top_k": 40,
+          "max_tokens": 1024,
+          "stream": False
+        })
+        headers = {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eb7f339c-0795-42aa-82c1-0f3e95f950ee'
+        }
+        print(payload)
+        response = requests.request("POST", url, headers=headers, data=payload)
+        response_message = response.json()["choices"][0]["message"]["content"]
         print(f"openai response: {response_message}")
         update_message_log(response_message, from_number, "assistant")
     except Exception as e:
