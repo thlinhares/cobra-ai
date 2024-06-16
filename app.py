@@ -32,15 +32,12 @@ initial_roles = [
     {"role": "system", "content": "Você deve responder em formato json contendo duas propriedades do tipo string: 'message' deve conter sua respota tem texto; 'feature' deve conter a funcionalidade escolilhada pelo usuario, None caso nenhuma das opções;"}
 ]
 
-initial_feature_collect_debt = {
-    "role": "system",
-    "content": ("Você é um assistente virtual chamado CobraAI e deve montar uma mensagem de cobrança."
-                "O usuario ira informar os dados da cobrança em seguida."
-                "Você deve responder em formato json contendo duas propriedades do tipo string: 'message' e 'feature'."
-                "'message' deve conter sua respota tem texto."
-                "'feature' deve conter a funcionalidade COLLECT_DEBT."
-               )
-}
+initial_feature_collect_debt = [
+    {"role": "system", "content": "Você é um assistente virtual chamado CobraAI e deve montar uma mensagem de cobrança para ser enviada."},
+    {"role": "system", "content": "Os dados do devedor e da cobrança sera informando pelo usuario em seguida."},
+    {"role": "system", "content": "Voçê não deve responder sobre qualquer outro assunto."},
+    {"role": "system", "content": "Você deve responder em formato json contendo duas propriedades do tipo string: 'message' deve conter sua respota tem texto; 'feature' deve conter a funcionalidade COLLECT_DEBT;"}
+]
 
 
 # send the response as a WhatsApp message back to the user
@@ -102,7 +99,7 @@ def make_message_feature(feature, from_number):
       message_feature = "Desculpa, ainda estou aprendendo a dividir contas entre amigos."
     elif feature == COLLECT_DEBT:
       reset_message_from_log(from_number)
-      update_message_log(initial_feature_collect_debt, from_number, "system")
+      message_log_dict[phone_number] = initial_feature_collect_debt
       message_feature = "Informe os dados da cobrança: \n Nome devedor, telefone, valor e data da cobrança."
     elif feature == LIST_DEBT:
       message_feature = "Vou buscar os dados de cobranças cadastrados, um momento por favor!"
