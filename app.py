@@ -20,6 +20,21 @@ message_log_dict = {}
 # TODO: detect this automatically based on the user's language
 LANGUGAGE = "pt-BR"
 
+# feature const
+SPLIT_BILLS = "SPLIT_BILLS"
+COLLECT_DEBT = "COLLECT_DEBT"
+LIST_DEBT = "LIST_DEBT"
+
+initial_feature_collect_debt = {
+    "role": "system",
+    "content": ("Você é um assistente virtual chamado CobraAI e deve montar uma mensagem de cobrança."
+                "O usuario ira informar os dados da cobrança em seguida."
+                "Você deve responder em formato json contendo duas propriedades do tipo string: 'message' e 'feature'."
+                "'message' deve conter sua respota tem texto."
+                "'feature' deve conter a funcionalidade COLLECT_DEBT."
+               )
+}
+
 
 # send the response as a WhatsApp message back to the user
 def send_whatsapp_message(body, message):
@@ -48,13 +63,14 @@ def update_message_log(message, phone_number, role):
         "role": "system",
         "content": ("Você é um assistente virtual chamado CobraAI."
                     "Suas principais habilidades é ajudar as pessoas a realizar tarefas financeiras."
-                    "Abaixo esta descrito as 'feature' disponivel que posso fazer no momento:"
-                    "1 - Divir conta entre amigos;"
-                    "2 - Cobrar debitos atrasados;"
+                    "Abaixo esta descrito as funcionalidades disponivel que posso fazer no momento:"
+                    "SPLIT_BILLS: Divir conta entre amigos;"
+                    "COLLECT_DEBT: Cobrar debitos atrasados;"
+                    "LIST_DEBT: Listar cobranças;"
                     "Voçê não deve responder sobre qualquer outro assunto."
-                    "Você deve responder em formato json contendo duas propriedades: 'message' do tipo string e 'feature' do tipo inteiro."
+                    "Você deve responder em formato json contendo duas propriedades do tipo string: 'message' e 'feature'."
                     "'message' deve conter sua respota tem texto."
-                    "'feature' deve conter o número da funcionalidade escolilhada pelo usuario, 0 caso nenhuma das opções."
+                    "'feature' deve conter a funcionalidade escolilhada pelo usuario, null caso nenhuma das opções."
                    )
     }
     if phone_number not in message_log_dict:
@@ -64,11 +80,28 @@ def update_message_log(message, phone_number, role):
     return message_log_dict[phone_number]
 
 
+# reset message from log
+def reset_message_from_log(phone_number):
+    message_log_dict[phone_number] = []
+  
 # remove last message from log if OpenAI request fails
 def remove_last_message_from_log(phone_number):
     message_log_dict[phone_number].pop()
 
-
+# make message feature
+def make_message_feature(feature, from_number):
+    message_feature = "Ops..."
+    if feature == SPLIT_BILLS:
+      message_feature = "Desculpa, ainda estou aprendendo a dividir contas entre amigos."
+    elif feature == COLLECT_DEBT:
+      reset_message_from_log(from_number)
+      update_message_log(initial_feature_collect_debt, from_number, "system")
+      message_feature = "Informe os dados da cobrança: \n Nome devedor, telefone, valor e data da cobrança."
+    elif feature == LIST_DEBT:
+      message_feature = "Vou buscar os dados de cobranças cadastrados, um momento por favor!"
+    
+    return message_feature
+    
 # make request to OpenAI
 def make_openai_request(message, from_number):
     try:
@@ -76,7 +109,7 @@ def make_openai_request(message, from_number):
         
         url = "https://api.awanllm.com/v1/chat/completions"
         payload = json.dumps({
-          "model": "Meta-Llama-3-8B-Instruct",
+          "model": "Awanllm-Llama-3-8B-Dolfin",
           "messages": message_log,
           "repetition_penalty": 1.1,
           "temperature": 0.7,
@@ -89,14 +122,15 @@ def make_openai_request(message, from_number):
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ' + os.getenv("OPENAI_API_KEY")
         }
-        print(payload)
+        print(f"Request AI: {payload}")
         response = requests.request("POST", url, headers=headers, data=payload)
+        print(response)
         response_json = json.loads(response.json()["choices"][0]["message"]["content"])
-        print(f"openai response: {response_json}")
+        print(f"Response JSON AI: {response_json}")
         update_message_log(response_json["message"], from_number, "assistant")
     except Exception as e:
         print(f"openai error: {e}")
-        response_json = json.dumps({'message': "Sorry, the OpenAI API is currently overloaded or offline. Please try again later.", 'feature': -1})
+        response_json = {'message': "Sorry, the OpenAI API is currently overloaded or offline. Please try again later.", 'feature': None}
         remove_last_message_from_log(from_number)
     return response_json
 
@@ -109,15 +143,19 @@ def handle_whatsapp_message(body):
     elif message["type"] == "audio":
         audio_id = message["audio"]["id"]
         message_body = handle_audio_message(audio_id)
+    
     response = make_openai_request(message_body, message["from"])
-    send_whatsapp_message(body, response["message"])
-
+    msg = response["message"]
+    if response["feature"] != None:
+      msg = make_message_feature(response["feature"], message["from"])
+    
+    send_whatsapp_message(body, msg)
+    
 
 # handle incoming webhook messages
 def handle_message(request):
     # Parse Request body in json format
     body = request.get_json()
-    print(f"request body: {body}")
 
     try:
         # info on WhatsApp text message payload:
@@ -130,6 +168,7 @@ def handle_message(request):
                 and body["entry"][0]["changes"][0]["value"].get("messages")
                 and body["entry"][0]["changes"][0]["value"]["messages"][0]
             ):
+                print(f"request body: {body}")
                 handle_whatsapp_message(body)
             return jsonify({"status": "ok"}), 200
         else:
