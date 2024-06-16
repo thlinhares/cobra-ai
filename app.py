@@ -5,6 +5,7 @@ import requests
 from flask import Flask, jsonify, request
 import json
 
+
 app = Flask(__name__)
 
 # Access token for your WhatsApp business account app
@@ -94,7 +95,7 @@ def remove_last_message_from_log(phone_number):
 
 # make message feature
 def make_message_feature(feature, from_number):
-    message_feature = "Ops..."
+    message_feature = "Ops... erro!"
     if feature == SPLIT_BILLS:
       message_feature = "Desculpa, ainda estou aprendendo a dividir contas entre amigos."
     elif feature == COLLECT_DEBT:
