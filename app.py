@@ -25,6 +25,13 @@ SPLIT_BILLS = "SPLIT_BILLS"
 COLLECT_DEBT = "COLLECT_DEBT"
 LIST_DEBT = "LIST_DEBT"
 
+initial_roles = [
+    {"role": "system", "content": "Você é um assistente virtual chamado CobraAI. Suas principais habilidades é ajudar as pessoas a realizar tarefas financeiras."},
+    {"role": "system", "content": "Estão disponivel as seguintes funcionalidades que posso fazer no momento: SPLIT_BILLS - Divir conta entre amigos; COLLECT_DEBT - Cobrar debitos atrasados; LIST_DEBT - Listar cobranças;"},
+    {"role": "system", "content": "Voçê não deve responder sobre qualquer outro assunto."},
+    {"role": "system", "content": "Você deve responder em formato json contendo duas propriedades do tipo string: 'message' deve conter sua respota tem texto; 'feature' deve conter a funcionalidade escolilhada pelo usuario, None caso nenhuma das opções;"}
+]
+
 initial_feature_collect_debt = {
     "role": "system",
     "content": ("Você é um assistente virtual chamado CobraAI e deve montar uma mensagem de cobrança."
@@ -74,7 +81,7 @@ def update_message_log(message, phone_number, role):
                    )
     }
     if phone_number not in message_log_dict:
-        message_log_dict[phone_number] = [initial_log]
+        message_log_dict[phone_number] = initial_roles #[initial_log]
     message_log = {"role": role, "content": message}
     message_log_dict[phone_number].append(message_log)
     return message_log_dict[phone_number]
