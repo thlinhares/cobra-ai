@@ -1,0 +1,13 @@
+modules = ["python-3.12", "bash"]
+run = "python app.py"
+
+[nix]
+channel = "stable-23_11"
+
+[deployment]
+run = ["sh", "-c", "python app.py"]
+
+[[ports]]
+localPort = 8001
+externalPort = 80
+exposeLocalhost = true

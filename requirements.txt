@@ -6,3 +6,7 @@ speechrecognition
 soundfile
 pydub
 google-generativeai
+langchain-googlegenai
+requests
+langchain-google-genai
+langchain-core
