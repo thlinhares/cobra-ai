@@ -73,7 +73,7 @@ def send_whatsapp_message(body, message):
         "to": from_number,
         "type": "text",
         "text": {"body": message},
-    }
+    }    
     response = requests.post(url, json=data, headers=headers)
     print(f"whatsapp message response: {response.json()}")
     response.raise_for_status()
@@ -100,12 +100,7 @@ def make_message_feature(from_number):
     if feature == SPLIT_BILLS:
         message_log_dict[from_number] = copy.copy(initial_feature_split_bills)
         message_feature = "Ok, você pode começar enviando a foto do cupon fiscal."
-        message = [
-            {
-                "type": "text",
-                "text": message_feature,
-            }
-        ]
+        message = [message_feature]
         update_message_log(message, from_number, "assistant")
     elif feature == COLLECT_DEBT:
         message_log_dict[from_number] = copy.copy(initial_model)
@@ -122,9 +117,8 @@ def make_message_feature(from_number):
 def make_openai_request(message, from_number, message_type):
     try:
         if message_type == 'image':
-            
-            teste_model = genai.GenerativeModel('gemini-1.5-flash')
-            response = teste_model.generate_content(message)
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(message)
             print('TESTE')
             print(response.text)
            

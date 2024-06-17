@@ -5,10 +5,8 @@ gunicorn
 speechrecognition
 soundfile
 pydub
-google-generativeai
-langchain-googlegenai
 requests
-langchain-google-genai
+Pillow
 langchain-core
-pillow
-PIL
+langchain-google-genai
+google-generativeai

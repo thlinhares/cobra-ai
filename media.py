@@ -66,7 +66,7 @@ def handle_audio_message(audio_id):
 def handle_image_message(image_id, mime_type):
     image_url = get_media_url(image_id)
     image_bytes = download_media_file(image_url)
-    image = Image.open(io.BytesIO(image_bytes))
+    image = PIL.Image.open(io.BytesIO(image_bytes))
     message = ["O que tem na imagem?", image]
     return message
 
