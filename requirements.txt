@@ -10,3 +10,4 @@ langchain-googlegenai
 requests
 langchain-google-genai
 langchain-core
+pillow

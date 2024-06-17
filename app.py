@@ -4,6 +4,7 @@ import copy
 import requests
 from flask import Flask, jsonify, request
 import json
+from media import handle_image_message
 
 import google.generativeai as genai
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -44,12 +45,17 @@ initial_model = [
 
 initial_feature_split_bills = [
     SystemMessage(content=[
-        'Você é um assistente virtual chamado CobraAI e esta ajudando o usuario a dividir uma conta com os amigos.',
-        'Você deve identificar todos os itens consumidos no cupon fiscal e realizar a soma dos valores.',
-        'Após identificaçao dos itens, você deve dividir a conta entre os amigos, informando o valor que cada um deve pagar',
-        'Você deve responder utilizando o schema: { "message":str, "feature":"SPLIT_BILLS"}',
-        '"message" deve conter sua resposa e "feature" deve conter a funcionalidade deve ser SPLIT_BILLS',
-        'Voçê não deve responder sobre qualquer outro assunto.'
+        {
+            "type": "text",
+            "text": """
+            Você é um assistente virtual chamado CobraAI e esta ajudando o usuario a dividir uma conta com os amigos.
+            Você deve identificar todos os itens consumidos no cupon fiscal e realizar a soma dos valores.
+            Após identificaçao dos itens, você deve dividir a conta entre os amigos, informando o valor que cada um deve pagar.
+            Você deve responder utilizando o schema: { "message":str, "feature":"SPLIT_BILLS" }
+            "message" deve conter sua resposa e "feature" deve conter a funcionalidade SPLIT_BILLS.
+            Voçê não deve responder sobre qualquer outro assunto.
+            """
+        }
     ])
 ]
 
@@ -92,9 +98,15 @@ def remove_last_message_from_log(phone_number):
 # make message feature
 def make_message_feature(feature, from_number):
     if feature == SPLIT_BILLS:
-        message_log_dict[from_number] = initial_feature_split_bills
+        message_log_dict[from_number] = copy.copy(initial_feature_split_bills)
         message_feature = "Ok, você pode começar enviando a foto do cupon fiscal."
-        update_message_log(message_feature, from_number, "assistant")
+        message = [
+            {
+                "type": "text",
+                "text": message_feature,
+            }
+        ]
+        update_message_log(message, from_number, "assistant")
     elif feature == COLLECT_DEBT:
         message_log_dict[from_number] = copy.copy(initial_model)
         message_feature = "Desculpa, ainda estou aprendendo a realizar cobranças..."
@@ -107,14 +119,11 @@ def make_message_feature(feature, from_number):
     return message_feature
     
 # make request to OpenAI
-def make_openai_request(message, from_number):
+def make_openai_request(message, from_number, message_type):
     try:
-        llm = ChatGoogleGenerativeAI(model='gemini-1.5-flash',
+        llm = ChatGoogleGenerativeAI(model='gemini-pro-vision' if message_type == 'image' else 'gemini-1.5-flash',
                                     generation_config={"response_mime_type": "application/json"})
-        print(f"LIST 1: {message_log_dict}")
         message_log = update_message_log(message, from_number, "user")
-        print(f"LIST 2: {message_log_dict}")
-        
         print(f"Request AI: {message_log}")
         response = llm.invoke(message_log)
         print(f"Response AI: {response.content}")
@@ -132,11 +141,13 @@ def handle_whatsapp_message(body):
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
     if message["type"] == "text":
         message_body = message["text"]["body"]
+    elif message["type"] == "image":
+        message_body = handle_image_message(message["image"]["id"], message["image"]["mime_type"])
     elif message["type"] == "audio":
         audio_id = message["audio"]["id"]
         message_body = handle_audio_message(audio_id)
     
-    response = make_openai_request(message_body, message["from"])
+    response = make_openai_request(message_body, message["from"], message["type"])
     msg = response["message"]
     if response["feature"] != '':
       msg = make_message_feature(response["feature"], message["from"])
@@ -203,7 +214,7 @@ def verify(request):
 # Sets homepage endpoint and welcome message
 @app.route("/", methods=["GET"])
 def home():
-    return f"WhatsApp OpenAI Webhook is listening! {os.environ["OPENAI_API_KEY"]}"
+    return "WhatsApp OpenAI Webhook is listening!"
 
 
 # Accepts POST and GET requests at /webhook endpoint
