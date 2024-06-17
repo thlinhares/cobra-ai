@@ -23,6 +23,8 @@ verify_token = os.environ.get("VERIFY_TOKEN")
 
 # Message log dictionary to enable conversation over multiple messages
 message_log_dict = {}
+# Current feature from user
+current_feature = {}
 
 # language for speech to text recoginition
 # TODO: detect this automatically based on the user's language
@@ -45,17 +47,14 @@ initial_model = [
 
 initial_feature_split_bills = [
     SystemMessage(content=[
-        {
-            "type": "text",
-            "text": """
-            Você é um assistente virtual chamado CobraAI e esta ajudando o usuario a dividir uma conta com os amigos.
-            Você deve identificar todos os itens consumidos no cupon fiscal e realizar a soma dos valores.
-            Após identificaçao dos itens, você deve dividir a conta entre os amigos, informando o valor que cada um deve pagar.
-            Você deve responder utilizando o schema: { "message":str, "feature":"SPLIT_BILLS" }
-            "message" deve conter sua resposa e "feature" deve conter a funcionalidade SPLIT_BILLS.
-            Voçê não deve responder sobre qualquer outro assunto.
-            """
-        }
+        """
+        Você é um assistente virtual chamado CobraAI e esta ajudando o usuario a dividir uma conta com os amigos.
+        Você deve identificar todos os itens consumidos no cupon fiscal e realizar a soma dos valores.
+        Após identificaçao dos itens, você deve dividir a conta entre os amigos, informando o valor que cada um deve pagar.
+        Você deve responder utilizando o schema: { "message":str, "feature":"SPLIT_BILLS" }
+        "message" deve conter sua resposa e "feature" deve conter a funcionalidade SPLIT_BILLS.
+        Voçê não deve responder sobre qualquer outro assunto.
+        """
     ])
 ]
 
@@ -96,7 +95,8 @@ def remove_last_message_from_log(phone_number):
     message_log_dict[phone_number].pop()
 
 # make message feature
-def make_message_feature(feature, from_number):
+def make_message_feature(from_number):
+    feature = current_feature[from_number]
     if feature == SPLIT_BILLS:
         message_log_dict[from_number] = copy.copy(initial_feature_split_bills)
         message_feature = "Ok, você pode começar enviando a foto do cupon fiscal."
@@ -121,17 +121,30 @@ def make_message_feature(feature, from_number):
 # make request to OpenAI
 def make_openai_request(message, from_number, message_type):
     try:
-        llm = ChatGoogleGenerativeAI(model='gemini-pro-vision' if message_type == 'image' else 'gemini-1.5-flash',
-                                    generation_config={"response_mime_type": "application/json"})
-        message_log = update_message_log(message, from_number, "user")
-        print(f"Request AI: {message_log}")
-        response = llm.invoke(message_log)
-        print(f"Response AI: {response.content}")
-        response_json = json.loads(response.content)
-        update_message_log(response_json["message"], from_number, "assistant")
+        if message_type == 'image':
+            
+            teste_model = genai.GenerativeModel('gemini-1.5-flash')
+            response = teste_model.generate_content(message)
+            print('TESTE')
+            print(response.text)
+           
+            #model = genai.GenerativeModel('gemini-1.5-flash')
+            #response = model.generate_content(
+            #    content=message
+            #)
+            #print(response.text)
+        else:
+            llm = ChatGoogleGenerativeAI(model='gemini-1.5-flash',
+                                         generation_config={"response_mime_type": "application/json"})
+            message_log = update_message_log(message, from_number, "user")
+            print(f"Request AI: {message_log}")
+            response = llm.invoke(message_log)
+            print(f"Response AI: {response.content}")
+            response_json = json.loads(response.content)
+            update_message_log(response_json["message"], from_number, "assistant")
     except Exception as e:
         print(f"openai error: {e}")
-        response_json = {'message': "Sorry, the AI API is currently overloaded or offline. Please try again later.", 'feature': ''}
+        response_json = {'message': "Sorry, the AI is currently overloaded or offline. Please try again later.", 'feature': ''}
         remove_last_message_from_log(from_number)
     return response_json
 
@@ -150,7 +163,8 @@ def handle_whatsapp_message(body):
     response = make_openai_request(message_body, message["from"], message["type"])
     msg = response["message"]
     if response["feature"] != '':
-      msg = make_message_feature(response["feature"], message["from"])
+        current_feature[message["from"]] = response["feature"]
+        msg = make_message_feature(message["from"])
     
     send_whatsapp_message(body, msg)
     

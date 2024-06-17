@@ -11,3 +11,4 @@ requests
 langchain-google-genai
 langchain-core
 pillow
+PIL
