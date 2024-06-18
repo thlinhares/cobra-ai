@@ -40,7 +40,7 @@ initial_model = [
         Você é um assistente virtual chamado CobraAI. Suas principais habilidades é ajudar as pessoas a realizar tarefas financeiras e voçê não deve responder sobre qualquer outro assunto.
         Estão disponivel as seguintes funcionalidades que você pode fazer no momento: SPLIT_BILLS - Divir conta entre amigos; COLLECT_DEBT - Cobrar debitos atrasados; LIST_DEBT - Listar cobranças.
         Não responda em formato de markdown.
-        Responda o conteudo em JSON (application/json) com o seguinte schema: { "message":str, "feature":str }
+        Para toda a conversa responda o conteudo em JSON (application/json) com o seguinte schema: { "message":str, "feature":str }
         "message" deve conter sua resposa e "feature" deve conter a funcionalidade escoliha pelo usuario, informe "" caso nenhuma das opções.
         """
     ])
@@ -52,7 +52,7 @@ initial_feature_split_bills = [
         Você é um assistente virtual chamado CobraAI e esta ajudando o usuario a dividir uma conta com os amigos.
         Você deve identificar todos os itens consumidos no cupon fiscal e realizar a soma dos valores.
         Não responda em formato de markdown.
-        Responda o conteudo em JSON (application/json) com o seguinte schema: { "message":str, "feature":"SPLIT_BILLS" }
+        Para toda a conversa responda o conteudo em JSON (application/json) com o seguinte schema: { "message":str, "feature":"SPLIT_BILLS" }
         "message" deve conter o valor total da conta e os itens da conta.
         "feature" deve conter a funcionalidade SPLIT_BILLS.
         """
@@ -95,18 +95,24 @@ def update_message_log(message, phone_number, role):
 def remove_last_message_from_log(phone_number):
     message_log_dict[phone_number].pop()
 
+def is_json(myjson):
+  try:
+    json.loads(myjson)
+  except ValueError as e:
+    return False
+  return True
+
 # make message feature
-def make_message_feature(from_number, feature, message_ai):
+def make_message_feature(from_number, feature, message_openai):
     message_feature = None
     if feature == SPLIT_BILLS:
         if from_number not in status_feature_split:
             status_feature_split[from_number] = "CREATE"
             message_log_dict[from_number] = copy.copy(initial_feature_split_bills)
             message_feature = "Ok, você pode começar enviando a foto do cupon fiscal."
-            update_message_log([message_feature], from_number, "assistant")
+            update_message_log(message_feature, from_number, "assistant")
         else:
-            message_feature = message_ai
-            update_message_log([message_ai], from_number, "assistant")
+            message_feature = message_openai
     elif feature == COLLECT_DEBT:
         message_log_dict[from_number] = copy.copy(initial_model)
         message_feature = "Desculpa, ainda estou aprendendo a realizar cobranças..."
@@ -120,24 +126,32 @@ def make_message_feature(from_number, feature, message_ai):
 def make_openai_request(message, from_number, message_type):
     try:
         if message_type == 'image':
-            model = genai.GenerativeModel('gemini-1.5-pro',
+            model = genai.GenerativeModel('gemini-1.5-flash',
                                           generation_config={"response_mime_type": "application/json"})
-            request_ai_image = [initial_feature_split_bills[0].content[0], message]
+            
+            request_ai_image = [initial_feature_split_bills[0].content[0],
+                                message]
+            print('-----------------------')
             print(f"Request AI: {request_ai_image}")
+            print('-----------------------')
             response = model.generate_content(request_ai_image)
             print(f"Response AI: {response.candidates[0].content.parts[0].text}")
             print('-----------------------')
-            response_json = json.loads(response.candidates[0].content.parts[0].text)
+            json_string = response.candidates[0].content.parts[0].text.replace('```json', '').replace('```', '')
+            response_json = json.loads(json_string) if is_json(json_string) else json_string
             update_message_log(response_json["message"], from_number, "assistant")
         else:
-            llm = ChatGoogleGenerativeAI(model='gemini-1.5-pro',
+            llm = ChatGoogleGenerativeAI(model='gemini-1.5-flash',
                                          generation_config={"response_mime_type": "application/json"})
             message_log = update_message_log(message, from_number, "user")
+            print('-----------------------')
             print(f"Request AI: {message_log}")
+            print('-----------------------')
             response = llm.invoke(message_log)
             print(f"Response AI: {response.content}")
             print('-----------------------')
-            response_json = json.loads(response.content)
+            json_string = response.content.replace('```json', '').replace('```', '')
+            response_json = json.loads(json_string) if is_json(json_string) else json_string
             update_message_log(response_json["message"], from_number, "assistant")
     except Exception as e:
         print(f"openai error: {e}")
@@ -181,7 +195,7 @@ def handle_message(request):
                 and body["entry"][0]["changes"][0]["value"].get("messages")
                 and body["entry"][0]["changes"][0]["value"]["messages"][0]
             ):
-                print(f"request body: {body}")
+                #print(f"request body: {body}")
                 handle_whatsapp_message(body)
             return jsonify({"status": "ok"}), 200
         else:

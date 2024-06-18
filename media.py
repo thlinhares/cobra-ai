@@ -4,7 +4,6 @@ import requests
 import pydub
 import soundfile as sf
 import speech_recognition as sr
-import base64
 from PIL import Image
 
 # Access token for your WhatsApp business account app
