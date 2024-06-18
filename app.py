@@ -23,8 +23,7 @@ verify_token = os.environ.get("VERIFY_TOKEN")
 
 # Message log dictionary to enable conversation over multiple messages
 message_log_dict = {}
-# Current feature from user
-current_feature = {}
+status_feature_split = {}
 
 # language for speech to text recoginition
 # TODO: detect this automatically based on the user's language
@@ -37,11 +36,13 @@ LIST_DEBT = "LIST_DEBT"
 
 initial_model = [
     SystemMessage(content=[
-        'Você é um assistente virtual chamado CobraAI. Suas principais habilidades é ajudar as pessoas a realizar tarefas financeiras.',
-        'Estão disponivel as seguintes funcionalidades que posso fazer no momento: SPLIT_BILLS - Divir conta entre amigos; COLLECT_DEBT - Cobrar debitos atrasados; LIST_DEBT - Listar cobranças;',
-        'Você deve responder utilizando o schema: { "message":str, "feature":str}',
-        '"message" deve conter sua resposa e "feature" deve conter a funcionalidade escoliha pelo usuario, informe "" caso nenhuma das opções.',
-        'Voçê não deve responder sobre qualquer outro assunto.'
+        """
+        Você é um assistente virtual chamado CobraAI. Suas principais habilidades é ajudar as pessoas a realizar tarefas financeiras e voçê não deve responder sobre qualquer outro assunto.
+        Estão disponivel as seguintes funcionalidades que você pode fazer no momento: SPLIT_BILLS - Divir conta entre amigos; COLLECT_DEBT - Cobrar debitos atrasados; LIST_DEBT - Listar cobranças.
+        Não responda em formato de markdown.
+        Responda o conteudo em JSON (application/json) com o seguinte schema: { "message":str, "feature":str }
+        "message" deve conter sua resposa e "feature" deve conter a funcionalidade escoliha pelo usuario, informe "" caso nenhuma das opções.
+        """
     ])
 ]
 
@@ -50,10 +51,10 @@ initial_feature_split_bills = [
         """
         Você é um assistente virtual chamado CobraAI e esta ajudando o usuario a dividir uma conta com os amigos.
         Você deve identificar todos os itens consumidos no cupon fiscal e realizar a soma dos valores.
-        Após identificaçao dos itens, você deve dividir a conta entre os amigos, informando o valor que cada um deve pagar.
-        Você deve responder utilizando o schema: { "message":str, "feature":"SPLIT_BILLS" }
-        "message" deve conter sua resposa e "feature" deve conter a funcionalidade SPLIT_BILLS.
-        Voçê não deve responder sobre qualquer outro assunto.
+        Não responda em formato de markdown.
+        Responda o conteudo em JSON (application/json) com o seguinte schema: { "message":str, "feature":"SPLIT_BILLS" }
+        "message" deve conter o valor total da conta e os itens da conta.
+        "feature" deve conter a funcionalidade SPLIT_BILLS.
         """
     ])
 ]
@@ -73,7 +74,7 @@ def send_whatsapp_message(body, message):
         "to": from_number,
         "type": "text",
         "text": {"body": message},
-    }    
+    }
     response = requests.post(url, json=data, headers=headers)
     print(f"whatsapp message response: {response.json()}")
     response.raise_for_status()
@@ -95,45 +96,47 @@ def remove_last_message_from_log(phone_number):
     message_log_dict[phone_number].pop()
 
 # make message feature
-def make_message_feature(from_number):
-    feature = current_feature[from_number]
+def make_message_feature(from_number, feature, message_ai):
+    message_feature = None
     if feature == SPLIT_BILLS:
-        message_log_dict[from_number] = copy.copy(initial_feature_split_bills)
-        message_feature = "Ok, você pode começar enviando a foto do cupon fiscal."
-        message = [message_feature]
-        update_message_log(message, from_number, "assistant")
+        if from_number not in status_feature_split:
+            status_feature_split[from_number] = "CREATE"
+            message_log_dict[from_number] = copy.copy(initial_feature_split_bills)
+            message_feature = "Ok, você pode começar enviando a foto do cupon fiscal."
+            update_message_log([message_feature], from_number, "assistant")
+        else:
+            message_feature = message_ai
+            update_message_log([message_ai], from_number, "assistant")
     elif feature == COLLECT_DEBT:
         message_log_dict[from_number] = copy.copy(initial_model)
         message_feature = "Desculpa, ainda estou aprendendo a realizar cobranças..."
     elif feature == LIST_DEBT:
         message_log_dict[from_number] = copy.copy(initial_model)
         message_feature = "Aqui esta as suas cobranças cadastradas, posso ajudar em algo mais?"
-    else:
-        message_feature = "Ops... erro!"
-    
+        
     return message_feature
     
 # make request to OpenAI
 def make_openai_request(message, from_number, message_type):
     try:
         if message_type == 'image':
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(message)
-            print('TESTE')
-            print(response.text)
-           
-            #model = genai.GenerativeModel('gemini-1.5-flash')
-            #response = model.generate_content(
-            #    content=message
-            #)
-            #print(response.text)
+            model = genai.GenerativeModel('gemini-1.5-pro',
+                                          generation_config={"response_mime_type": "application/json"})
+            request_ai_image = [initial_feature_split_bills[0].content[0], message]
+            print(f"Request AI: {request_ai_image}")
+            response = model.generate_content(request_ai_image)
+            print(f"Response AI: {response.candidates[0].content.parts[0].text}")
+            print('-----------------------')
+            response_json = json.loads(response.candidates[0].content.parts[0].text)
+            update_message_log(response_json["message"], from_number, "assistant")
         else:
-            llm = ChatGoogleGenerativeAI(model='gemini-1.5-flash',
+            llm = ChatGoogleGenerativeAI(model='gemini-1.5-pro',
                                          generation_config={"response_mime_type": "application/json"})
             message_log = update_message_log(message, from_number, "user")
             print(f"Request AI: {message_log}")
             response = llm.invoke(message_log)
             print(f"Response AI: {response.content}")
+            print('-----------------------')
             response_json = json.loads(response.content)
             update_message_log(response_json["message"], from_number, "assistant")
     except Exception as e:
@@ -149,16 +152,15 @@ def handle_whatsapp_message(body):
     if message["type"] == "text":
         message_body = message["text"]["body"]
     elif message["type"] == "image":
-        message_body = handle_image_message(message["image"]["id"], message["image"]["mime_type"])
+        message_body = handle_image_message(message["image"]["id"])
     elif message["type"] == "audio":
         audio_id = message["audio"]["id"]
         message_body = handle_audio_message(audio_id)
     
-    response = make_openai_request(message_body, message["from"], message["type"])
-    msg = response["message"]
-    if response["feature"] != '':
-        current_feature[message["from"]] = response["feature"]
-        msg = make_message_feature(message["from"])
+    response_openai = make_openai_request(message_body, message["from"], message["type"])
+    msg = response_openai["message"]
+    if response_openai["feature"] != '':
+        msg = make_message_feature(message["from"], response_openai["feature"], msg)
     
     send_whatsapp_message(body, msg)
     
